@@ -1,0 +1,10 @@
+"0","ggplot(Wine, aes(x = free.sulfur.dioxide, y = total.sulfur.dioxide) ) +"
+"0","   labs(title = ""Total to Free Sulfur Density"") +"
+"0","   stat_density_2d(aes(fill = ..density..), geom = ""raster"", contour = FALSE)  +"
+"0","   geom_smooth(data = redWine, method = lm, se = FALSE, aes(col = ""red"")) +"
+"0","   geom_smooth(data = whiteWine, method = lm, se = FALSE, aes(col = ""white""))+"
+"0","   scale_colour_manual(name = ""Avg. Line Per Wine"", values = c(""Red"", ""White""), labels = c(""Red Wine"", ""White Wine""))"
+"2","`geom_smooth()` using formula 'y ~ x'
+"
+"2","`geom_smooth()` using formula 'y ~ x'
+"

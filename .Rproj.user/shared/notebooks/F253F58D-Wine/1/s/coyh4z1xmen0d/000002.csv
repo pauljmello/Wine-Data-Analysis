@@ -1,0 +1,3 @@
+"0","redWine <- redWine %>% select(-density)"
+"0","whiteWine <- whiteWine %>% select(-density)"
+"0","Wine <- Wine %>% select(-density)"
