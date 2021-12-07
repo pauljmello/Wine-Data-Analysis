@@ -1,0 +1,743 @@
+---
+author: "Paul-Jason Mello"
+date: "12/6/2021"
+output:
+  pdf_document: default
+title: "Wine Data Analysis"
+fig_width: 12
+fig_height: 8
+---
+
+## Introduction
+
+I have selected this data set because I am interested in learning about which properties have a significant impact on the quality of a wine. I have begun researching the world of wines independently and this variety specifically comes from the north of Portugal. As a descendant of two Portuguese immigrants, who just began entering the world of wines, I thought it would be a great data set to work with. I hope that once my analysis is finished I will have deciphered what makes a good quality wine. Additionally, I highly recommend those who are interested to read the paper developed by Paulo Cortez http://www3.dsi.uminho.pt/pcortez/wine5.pdf He details out many interesting methods in developing a solid algorithm for wine classification. It should be noted that despite the intricate methods presented, his best accuracy for the classification of wine qualities was 89% when using an SVM (support-vector machine) to classify red wines specifically. 
+
+## Data
+
+Github Repository Link for this Project: https://github.com/pauljmello/Wine-Data-Analysis
+
+
+Data source: 
+https://archive.ics.uci.edu/ml/datasets/Wine+Quality 
+
+Data collection: 
+This data set is a collection of wine data sampled from the northern end of Portugal by Paulo Cortez in 2009. Specifically, it comes from a variety of grapes called "Vinho Verde". Cortez collected these samples as part of an observational study "to model wine quality based on physicochemical tests." 
+
+Units of observations: 
+
+Each row represents a purchasable wine. The wine name, price, and other identifying aspects have been removed for privacy reasons.
+
+The column names are denoted below with a brief summary describing the unit of observation.
+
+1. fixed acidity        - Ratio (double), 4 Types of standard acids found in wine.
+
+2. volatile acidity     - Ratio (double), Measure of a wines gaseous acid content.
+
+3. citric acid          - Ratio (double), Measure of wines citric acid content.
+
+4. residual sugar       - Ratio (double), Measure of natural grape sugar leftovers after fermentation.
+
+5. chlorides            - Interval (double), Measures the saltiness of a wine. Consistent with the salt in water used during the wine making process.
+
+6. free sulfur dioxide  - Ratio (integer), Sulfur which is added to the wine to regulate bacterial stability.
+
+7. total sulfur dioxide - Ratio (integer), The total amount of sulfur that is found in the wine.
+
+8. density              - Ratio (double), A measure of how dense the wine is.
+
+9. pH                   - Interval (double), A measure of how acidic or basic the wine is. ph < 7 = acidic, ph > 7 = basic, ph = 7 = neutral. 
+
+10. sulfates            - Ratio (double), A salt that forms when citric acid reacts with other chemicals.
+
+11. alcohol             - Ratio (double), The alcohol content of the wine.
+
+12. quality             - Ordinal (integer), The quality of the wine as determined and evaluated by 3 wine experts.
+
+Additional derived columns will be added to each data set consisting of the following descriptions:
+
+13. total.free          - Ratio (double), total sulfur dioxide - free sulfur dioxide. This is in essence sulfur which is considered "dead" because it is no longer fighting bacteria growth.
+
+XX. color               - Nominal (string), The color of the observed wine. *Only found in the aggregate wine data set.
+
+XX. ratings             - Binary (integer), Wines which were rated 7-10 will be considered good (1), while wines from 0-6 will be considered bad (0).
+
+Variables:
+I plan to study the wine data set by using all of the variables given except for density. I believe that the density of wine is so similar it will have no effect on any aspect or analysis of the data.
+
+
+## Important Notes
+
+Wines are made in a process composed of many parts over potentially very long periods of time. It is a complex task that may not be easily modeled by physiochemical traits as there are many external variables which contribute to the quality of a wine. Wine attributes have diminishing returns in each column. For example drinking pure sulfates would be toxic, not tasty. Additionally, quality is a subjective measure, even when rated by experts. 
+
+
+## Questions
+
+1. Is there a strong correlation in determining the quality of a wine when looking at the ratios between total sulfur dioxide and free sulfur dioxide? 
+
+2. Can we develop a regression model to accurately predict the ratings of a wine?
+
+3. Which aspects of acidity play an important role when determining the variation in the data?
+
+4. Can we model wine color by its physiochemical properties? 
+
+```{r, load-packages, warning=FALSE, results='hide', message=FALSE, echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(corrplot)
+
+set.seed(101)
+```
+
+
+## Data Preprocessing
+
+Loading and formatting data.
+
+```{r}
+redWine <- read.csv(url("https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"), sep=";")
+whiteWine <- read.csv(url("https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv"), sep=";")
+```
+
+The data set claims to have no missing observations So we will check to ensure all observations are present.
+
+```{r, echo=FALSE}
+redNA <- sum(is.na(redWine))
+whiteNA <- sum(is.na(whiteWine))
+sprintf("Missing Values of Red Wine: %d", redNA)
+sprintf("Missing Values of White Wine: %d", whiteNA)
+```
+
+Next we want to derive the columns and create the aggregated data set we need. One of these columns being created represents the quantity of the current "dead" sulfates that are no longer actively fighting bacterial growth, but remain lingering in the background. We will also create another column to describe the color of the wine in the aggregated data set.
+
+```{r, echo=FALSE}
+redWine$total.free <- (redWine$total.sulfur.dioxide - redWine$free.sulfur.dioxide)
+whiteWine$total.free <- (whiteWine$total.sulfur.dioxide - whiteWine$free.sulfur.dioxide)
+
+redWine$color <- ("Red")
+whiteWine$color <- ("White")
+
+redWine$rating <- ifelse(redWine$quality >= 7, 1, 0) # We consider good quality  wines to be rated 7 or greater.
+whiteWine$rating <- ifelse(whiteWine$quality >= 7, 1, 0)
+
+Wine <- rbind(redWine, whiteWine)
+```
+
+```{r, results='hide', echo=FALSE}
+Wine$quality <- as.numeric(Wine$quality) # Ensuring quality is read as a number and not an object type.
+redWine <- redWine %>% select(-color)
+whiteWine <- whiteWine %>% select(-color)
+
+redWine <- redWine %>% select(-density)
+whiteWine <- whiteWine %>% select(-density)
+Wine <- Wine %>% select(-density)
+```
+
+```{r, results='hide', echo=FALSE}
+# Cleaning residual data created from improper datatypes.
+redWine$alcohol <- round(redWine$alcohol, digits = 1)
+redWine$residual.sugar <- round(redWine$residual.sugar, digits = 1)
+redWine$free.sulfur.dioxide <- round(redWine$free.sulfur.dioxide, digits = 0)
+redWine$total.sulfur.dioxide <- round(redWine$total.sulfur.dioxide, digits = 0)
+
+whiteWine$alcohol <- round(whiteWine$volatile.acidity, digits = 2)
+whiteWine$residual.sugar <- round(whiteWine$residual.sugar, digits = 1)
+whiteWine$free.sulfur.dioxide <- round(whiteWine$free.sulfur.dioxide, digits = 0)
+whiteWine$total.sulfur.dioxide <- round(whiteWine$total.sulfur.dioxide, digits = 0)
+whiteWine$total.free <- round(whiteWine$total.free, digits = 0)
+
+Wine$alcohol <- round(Wine$alcohol, digits = 1)
+```
+
+# Visualizations of Data
+
+Below we can create some initial visualizations. This includes a correlation matrix and a general plot of variable. The correlation will become useful in our analysis and especially when we get to regression later on.
+```{r, fig.width=8, fig.height=8, echo=FALSE}
+corWine <- cor(Wine %>% select(-color))
+corrplot(corWine)
+```
+
+After developing our correlation graph above we should now create a normalized version of the data to demonstrate any patterns that may be relevant. I have removed all binary variables for easier viewing.
+```{r, fig.width=16, fig.height=16, echo=FALSE}
+tempWine <- (Wine %>% select(-color, -rating))
+tempPreProcess <- preProcess(tempWine, method=c("center", "scale"))
+normalizedWine <- predict(tempPreProcess, tempWine)
+plot(normalizedWine)
+```
+
+```{r, echo=FALSE}
+rm("tempPreProcess", "tempWine", "normalizedWine") #Removing temporary Variables
+```
+
+```{r echo=FALSE}
+IsOutlier <- function(data) {
+   lowerq = quantile(data)[2]
+   upperq = quantile(data)[4]
+   iqr = upperq - lowerq 
+   threshold_upper = (iqr * 1.5) + upperq
+   threshold_lower = lowerq - (iqr * 1.5)
+   data > threshold_upper | data <  threshold_lower 
+}
+```
+
+```{r, echo=FALSE}
+redWineOutliers = redWine[rowSums(sapply(redWine %>% select(-rating), IsOutlier)) > 0, ]
+whiteWineOutliers = whiteWine[rowSums(sapply(whiteWine %>% select(-rating), IsOutlier)) > 0, ]
+WineOutliers = Wine[rowSums(sapply(Wine %>% select(-color, -rating), IsOutlier)) > 0, ]
+
+redOutliers <- as.integer(count(redWineOutliers)) 
+whiteOutliers <- as.integer(count(whiteWineOutliers))
+WineOutliers <- as.integer(count(WineOutliers))
+```
+
+After looking at the raw data and its derived attributes we should now look to see what quantity of data is considered to be an outlier. From here we can decide weather or not the outlier data is still relevant. Notably we removed ratings and color from determining outliers as these should not relevant to outlier analysis.
+```{r, echo=FALSE}
+sprintf("Number of Outliers In Red Wine Data: %i", redOutliers)
+sprintf("Number of Outliers In White Wine Data: %i", whiteOutliers)
+sprintf("Number of Outliers In Wine Data: %i", WineOutliers)
+```
+
+```{r, echo=FALSE}
+redWine <- redWine[-c(1300, 152, 481, 1436, 1435, 259, 1080, 1082, 92, 87, 93, 152, 128, 127, 107, 82,  724, 170, 14, 227),] 
+whiteWine <- whiteWine[-c(1527, 4040, 746, 3153, 2782, 485, 4746, 1218, 2128, 1664, 1654, 1932, 3051, 1418),] 
+Wine <- Wine[-c(1300, 2345, 4381, 152, 259, 6345, 3017, 3727, 92, 87, 93, 152, 4752, 128, 127, 673, 3262, 3253, 3531, 4650, 724, 170, 14, 227),]
+```
+
+As it turns out, there are a significant amount of outliers throughout every data set. I have decided to remove only a handful of outliers because this significance is an indication that wine comes in many different varieties due to its process. This will likely affect the PCA analysis later. Despite keeping nearly every data point I have removed the most egregious outliers because they were many times outside an acceptable range for their respective data sets. Interestingly, the outliers which were removed tended to be lower quality wines. I believe this is a very strong indication that the principal of having too much of something present ruins the experience in something as complex as wine. The only attribute which did not follow this trend was citric acid, which had an acceptable level of quality. 
+
+## Exploratory Data Analysis
+
+Here we can see an aggregated summary of the wine data. This gives us some meaningful insights regarding the statistics of the data. We have removed color and rating because their statistical properties are irrelevant.
+
+```{r, echo=FALSE, results='hide'}
+summary(redWine)
+```
+
+```{r, echo=FALSE, results='hide'}
+summary(whiteWine)
+```
+
+```{r}
+summary(Wine %>% select(-color, -rating)) #Aggregated Wine Data Summary
+```
+
+As we can see there still appears to be some significant outliers present in the summary statistics. However, these are considerably closer when compared to the outliers which were removed.
+
+Now that we have cleaned and summarized our data its time to compare and contrast the two data sets by visualizing the inherent differences. Note that the white wine data set contains approximately 3x as many variables as red wine does. 
+
+```{r, echo=FALSE}
+ggplot(Wine, aes(x = quality, fill = color)) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Distribution of Quality by Wine Type") +
+  geom_histogram(alpha = 0.4, position = "identity",  binwidth = 1)
+```
+As we can see there are clear differences in the quality counts, but more importantly, we can begin to see how the quality of white wines tends to be greater than red wines. Further investigation of the red wine distribution demonstrates there are more red wines rated to be quality five than six. In addition the red wine subset is skewed to the right, while white wine appears to be normally distributed. This maybe caused by the grape variety being better suited for white wines than red wines. However, because quality is a measure of sensory data we can not be certain of this conclusion.
+
+Following the initial visualizations we can begin to assess each question in depth to form a better understanding of the wine data set.
+
+
+### Question 1:
+  
+#### "Is there a strong correlation in determining the quality of a wine when looking at the ratios between total sulfur dioxide and free sulfur dioxide?"
+  
+
+Given our initial correlation plot we could see that the highest correlations, outside of our derived attributes, appeared to be between total sulfur dioxide and free sulfur dioxide. These two metrics are inherently similar as they describe the sulfur dioxide content; However, there is an indication that these attributes may be in part responsible for the overall rated quality of a wine. 
+
+```{r, fig.width=14, fig.height=9, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Wine, aes(x = free.sulfur.dioxide, y = total.sulfur.dioxide)) +
+   theme_dark() + 
+   theme(plot.title = element_text(hjust = 0.5)) +
+   geom_point(aes(color = quality)) + 
+   labs(title = "Density of Quality by Total to Free Sulfur", c) +
+   xlab("Free Sulfur") +
+   ylab("Total Sulfur") +
+   stat_density_2d(aes(fill = ..level.., alpha = ..level..), geom = 'polygon', color = "black", countour_var = "quality", show.legend = FALSE)
+```
+
+Through the graph above we can see how quality is related to the correlation between free sulfur and total sulfur. We can think of this as a topological graph where the data points of total and free sulfur are elevated based on the quality of the wine. Interestingly, we can see some relationships emerge where it is evident that higher quality wines tend to be centralized in two specific clusters. Particularly, they appear when sulfur contents are approximately (10, 20) and (30, 110). This demonstrates that there is a necessary balance between the sulfur types in a wine that helps develop a wine's complex flavors through bacterial growth.
+
+This alone is not indicative of a relationship, but it helps demonstrate the emerging relation between a wines sensory quality and its physiochemical properties.
+
+As a result we can expand into the next section and cover the summary statistics of each sulfur based attribute as labelled by its quality. This may give us key insight into the underlying patterns present in each wine quality tier.  
+
+```{r, echo=FALSE, fig.width=9, fig.height=5}
+boxplot(total.sulfur.dioxide ~ quality , data = Wine, main = "Quality by Total Sulfur Content", xlab = "Total Sulfur", ylab = "Quality", horizontal = TRUE)
+```
+We can see in this first box plot that there is a sweet spot for total sulfur when making a high quality wine. Lower quality wines tend to have far greater variation and far different means. We can also see that as wine quality increases the mean of each quality level begins to "tighten" itself around the higher quality wine's mean.
+
+```{r, echo=FALSE, fig.width=9, fig.height=5}
+boxplot(free.sulfur.dioxide ~ quality , data = Wine, main = "Quality by Free Sulfur Content", xlab = "Free Sulfur", ylab = "Quality", horizontal = TRUE)
+```
+Meanwhile, in this box plot the highest quality wines are incredibly concise in respect to the amount of free sulfur. This is important because free sulfur is specific to sulfur which is added to the wine making process and not already naturally occurring. This implies that there is an ideal amount of sulfur which should be added into a wine to improve the overall quality. 
+
+```{r, echo=FALSE, fig.width=9, fig.height=5}
+boxplot(total.free ~ quality , data = Wine, main = "Quality by \"Dead\" Sulfur", xlab = "\"Dead\" Sulfur", ylab = "Quality", horizontal = TRUE)
+```
+Finally, as we can see in this box plot, the highest quality wines tend to balance sulfur far better by having tighter margins. Interestingly, we can see that this chart models our total sulfer box plot in roughly the same way. Specifically we can see the means start low, overextend and then return to a good balance as the quality increases.
+
+We can conclude that there is some significance in sulfur which plays an important role in the quality of a wine. Moreover, we can expand this by attempting to fit a linear regression model to our data set in an attempt to see which variables are statistically significant in determining the rating of a wine.
+
+### Question 2:  
+  
+####  Can we fit an accurate linear regression model to the rating of a wine given its physiochemical properties?  
+  
+
+It is important to keep in mind that the rating attribute we will be attempting to predict is entirely dependent on quality. Wine qualities from 0-6 are considered bad while wines from 7-10 will be considered good. We will condense our wine data into all numeric by one-hot encoding any attributes which are not already numeric.
+
+```{r, echo=FALSE}
+newWine <- Wine
+
+newWine$color[newWine$color == "Red"] <- 0
+newWine$color[newWine$color == "White"] <- 1
+
+newWine$color <- as.numeric(newWine$color)
+newWine$rating <- as.numeric(newWine$rating)
+
+Data = sort(sample(nrow(newWine), nrow(newWine)*.7))
+trainingData <- newWine[Data,]
+testingData <- newWine[-Data,]
+```
+
+```{r, echo=FALSE}
+# All variables contributing
+WineModel0 <- lm(rating ~ fixed.acidity + volatile.acidity + citric.acid + residual.sugar + chlorides + free.sulfur.dioxide + total.sulfur.dioxide + sulphates + alcohol + color, data = trainingData)
+summary(WineModel0)
+```
+
+From this initial model we can see which attributes are statistically significant in determining the rating of our wine. Note that both sulfur attributes are playing a statistically significant role in determining the rating of the wine. From here we can extract each significant attribute which affects the predicted rating of a wine and attempt to increase our models R-Squared accuracy.
+
+```{r, echo=FALSE}
+DecantedWineModel <- lm(rating ~ (volatile.acidity + residual.sugar + free.sulfur.dioxide + total.sulfur.dioxide + sulphates + alcohol), data = trainingData)
+summary(DecantedWineModel)
+```
+
+After extraction we have actually increased our F-statistic by double, gained no difference in our P-value, and lost a negligible bit of our R-Squared. However, before continuing, it would be interesting to see a forward and backwards step-wise selection to compare our models.
+
+```{r, echo=FALSE}
+intercept <- lm(rating ~ 1, data = Wine)
+forward <- step(intercept, direction='forward', scope=formula(WineModel0), trace=0)
+forward$coefficients
+```
+
+As we can see from developing our forward step feature selection it has simply included all significant variables. When conducting mine I took into account the R-Squared loss and for a model this large I would consider a few of these variables entirely unnecessary to save space and time complexity. However, this does clearly label the important factors associated with modelling the rating of alcohol and sulphates.
+
+Next we will check a backwards step-wise selection and see if it offers us any difference.
+
+```{r}
+intercept <- lm(rating ~ 1, data = Wine)
+backward <- step(intercept, direction='backward', scope=formula(WineModel0), trace=0)
+backward$coefficients
+```
+
+Our backwards selection has nothing outside of the intercept. Thus moving forward we will continue with the our forward step-wise selection model.
+
+```{r}
+WineModel <- lm(rating ~ volatile.acidity + residual.sugar + chlorides + free.sulfur.dioxide + total.sulfur.dioxide + sulphates + alcohol, data = trainingData)
+summary(WineModel)
+```
+
+```{r, echo=FALSE}
+par(mfrow=c(2,2))
+plot(WineModel)
+par(mfrow=c(1,1))
+```
+
+There appears to be some interesting splits in the "Residuals vs Fitted" and "Scale-Location" graphs. More importantly, the data appears to be linear in both of these cases which leads me to the conclusion that when creating this model there was something I am not aware of that is greatly damaging the modelling. This may be the result of using sensory data and the many complexities of the wine making process. One important note is that it appears our data tends to be normally distributed, but it isn't as a result of the data after our first standard deviation. 
+
+```{r, warning=FALSE, echo=FALSE}
+prediction <- round(predict(WineModel, testingData, type = 'response'))
+prediction <- as.factor(prediction)
+testingQuality <- as.factor(testingData$rating)
+confusionMatrix(data = prediction, reference = testingQuality)
+```
+
+After testing our modelling accuracy we can see that we are approximately 80% accurate when determining whether a wine is rated good or bad. Although okay, it is not strong enough to be considered accurate or precise.
+
+As a result I would like to try this model again, but this time I will remove the outliers from the data set and see if they are having a large affect on the modelling accuracy.
+
+```{r, echo=FALSE, message=FALSE}
+trainingData <- trainingData[-WineOutliers,]
+testingData <- testingData[-WineOutliers,]
+```
+
+```{r, echo=FALSE, message=FALSE}
+NewWineModelTest <- lm(rating ~ fixed.acidity + volatile.acidity + residual.sugar + chlorides + free.sulfur.dioxide + total.sulfur.dioxide + sulphates + alcohol + color, data = trainingData)
+summary(NewWineModelTest)
+```
+
+```{r, echo=FALSE, message=FALSE}
+NewDecantedWineModel <- lm(rating ~ (volatile.acidity + residual.sugar + free.sulfur.dioxide + total.sulfur.dioxide + sulphates + alcohol), data = trainingData)
+summary(NewDecantedWineModel)
+```
+
+Once again we will display the step-wise selections below to assess how we determined our models final selection.
+
+```{r}
+forward <- step(intercept, direction='forward', scope=formula(NewWineModelTest), trace=0)
+forward$coefficients
+```
+
+```{r}
+backward <- step(intercept, direction='backward', scope=formula(NewWineModelTest), trace=0)
+backward$coefficients
+```
+
+One again, we can see that after conducting our step-wise selections on the new data set without outliers we observe no change across any of the coefficients. This means that there is little to no change in the model with or without outliers. In learning of this I am now far more confident with my decision to keep the outliers.
+
+```{r, echo=FALSE}
+NewWineModel <- lm(rating ~ volatile.acidity + residual.sugar + chlorides + free.sulfur.dioxide + total.sulfur.dioxide + sulphates + alcohol, data = trainingData)
+summary(NewWineModel)
+```
+
+```{r, echo=FALSE}
+par(mfrow=c(2,2))
+plot(NewWineModel)
+par(mfrow=c(1,1))
+```
+
+After running the new model without outliers we have seen no change in any aspect of the modelling. While my hopes of developing a linear regression model for adequately predicting the rating of a wine has been dashed, I am now confident that our outliers were not affecting the model or the data at large. I have reinforced my emerging understanding that wine qualities are significantly more complex than the sum of their physiochemical properties. Ones that the residuals would likely need in order to account for the immense variability which is not described inherently in our data set. Despite this I still want to check to see how accurate this classifier is.
+
+```{r, warning=FALSE, echo=FALSE}
+prediction <- round(predict(NewWineModel, testingData, type = 'response'))
+prediction <- as.factor(prediction)
+testingQuality <- as.factor(testingData$rating)
+confusionMatrix(data = prediction, reference = testingQuality)
+```
+
+After modeling rating for the wine data set, we were only able to correctly identify approximately 80% of wine ratings. This however is within the confidence interval of our previous model's accuracy as well. As a result we must conclude that there is statistically no change in predicting accuracy when removing outliers. Despite this we can still say that our model is better than simply guessing, but not good enough for any real world applications. 
+
+### Question 3:  
+  
+#### Which acidity attribute plays an important role?  
+  
+  
+```{r, echo=FALSE, message=FALSE}
+rw <- redWine %>% select(-residual.sugar, -chlorides, -total.sulfur.dioxide, -free.sulfur.dioxide, -pH, -sulphates, -alcohol, -total.free, -quality, -rating)
+ww <- whiteWine %>% select(-residual.sugar, -chlorides, -total.sulfur.dioxide, -free.sulfur.dioxide, -pH, -sulphates, -alcohol, -total.free, -quality, -rating)
+w <- Wine %>% select(-residual.sugar, -chlorides, -total.sulfur.dioxide, -free.sulfur.dioxide, -pH, -sulphates, -alcohol, -total.free, -color, -quality, -rating)
+
+rw.Scaled <- scale(rw)
+ww.Scaled <- scale(ww)
+w.Scaled <- scale(w)
+```
+
+```{r, echo=FALSE, message=FALSE}
+RWCOV <- cov(rw)
+RWCOR <- cor(rw)
+
+WWCOV <- cov(ww)
+WWCOR <- cor(ww)
+
+WCOV <- cov(w)
+WCOR <- cor(w)
+```
+
+```{r, echo=FALSE, message=FALSE}
+eigenrWCV <- eigen(RWCOV)
+eigenrWCR <- eigen(RWCOR)
+
+eigenwWCV <- eigen(WWCOV)
+eigenwWCR <- eigen(WWCOR)
+
+eigenWCV <- eigen(WCOV)
+eigenWCR <- eigen(WCOR)
+```
+
+```{r, echo=FALSE, message=FALSE}
+rwCV.percent <- eigenrWCV$values / sum(eigenrWCV$values)
+rwCR.percent <- eigenrWCR$values / sum(eigenrWCR$values)
+
+wWCV.percent <- eigenwWCV$values / sum(eigenwWCV$values)
+wWCR.percent <- eigenwWCR$values / sum(eigenwWCR$values)
+
+WCV.percent <- eigenWCV$values / sum(eigenWCV$values)
+WCR.percent <- eigenWCR$values / sum(eigenWCR$values)
+```
+   
+After preparing each respective data set by scaling the data, and collecting their eigenvalues, it is now time to determine the percentages of our checks. Here we will be able to see which aspect of acidity is playing a crucial role.
+
+```{r, echo=FALSE, message=FALSE, results='hide'}
+rwCV.percent
+rwCR.percent
+
+wWCV.percent 
+wWCR.percent
+```
+
+```{r, echo=FALSE}
+qplot(c(1:3), WCV.percent) + # Wine covariance percentage
+  geom_line() + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Principal Component") + 
+  ylab("Variance Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, 1)
+```
+
+It is clear that the first column (fixed acidity) is playing the only significant role when it comes to covariance as the other columns are almost 0 respectively. As a result we can state that fixed acidity can explain a total of 97% of the total variance we find in this analysis.  
+
+```{r, echo=FALSE}
+qplot(c(1:3), WCR.percent) + # Wine correlation percentage
+  geom_line() + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Principal Component") + 
+  ylab("Correlation Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, 1)
+```
+
+Unlike the covariance matrix the correlation matrix presents us with an interesting scree plot which demonstrates that the first two principal components are playing a very similar role in determining the correlation.  
+
+Next we want to perform some checks to ensure the sums of our values still total to one and are thus valid.
+
+```{r, echo=FALSE, message=FALSE, results='hide'}
+cumsum(rwCV.percent)
+cumsum(rwCR.percent)
+
+cumsum(wWCV.percent)
+cumsum(wWCR.percent)
+```
+
+
+
+```{r, echo=FALSE}
+cumsum(WCV.percent) # Wine covariance percentage
+cumsum(WCR.percent) # Wine correlation percentage
+```
+
+After the initial development it is clear that columns 1 and 2 have the highest impact. However, column 1's covariance is significantly higher than the other two, while correlation is spread out relatively evenly between the first two columns. These columns are consistent with the attributes of fixed.acidity and volatile.acidity. 
+
+```{r, echo=FALSE}
+rWVecV = eigenrWCV$vectors[,1:2]
+rWVecR = eigenrWCR$vectors[,1:2]
+
+wWVecV = eigenwWCV$vectors[,1:2]
+wWVecR = eigenwWCR$vectors[,1:2]
+
+WVecV = eigenWCV$vectors[,1:2]
+WVecR = eigenWCR$vectors[,1:2]
+```
+
+```{r, echo=FALSE}
+rw.V.PC1 <- as.matrix(rw.Scaled) %*% rWVecV[,1]
+rw.V.PC2 <- as.matrix(rw.Scaled) %*% rWVecV[,2]
+rw.R.PC1 <- as.matrix(rw.Scaled) %*% rWVecR[,1]
+rw.R.PC2 <- as.matrix(rw.Scaled) %*% rWVecR[,2]
+
+ww.V.PC1 <- as.matrix(ww.Scaled) %*% wWVecV[,1]
+ww.V.PC2 <- as.matrix(ww.Scaled) %*% wWVecV[,2]
+ww.R.PC1 <- as.matrix(ww.Scaled) %*% wWVecR[,1]
+ww.R.PC2 <- as.matrix(ww.Scaled) %*% wWVecR[,2]
+
+w.V.PC1 <- as.matrix(w.Scaled) %*% WVecV[,1]
+w.V.PC2 <- as.matrix(w.Scaled) %*% WVecV[,2]
+w.R.PC1 <- as.matrix(w.Scaled) %*% WVecR[,1]
+w.R.PC2 <- as.matrix(w.Scaled) %*% WVecR[,2]
+```
+
+```{r, echo=FALSE}
+rW.CV.PCS <- data.frame(RWCOV.index = row.names(rw), rw.V.PC1, rw.V.PC2)
+rW.CR.PCS <- data.frame(RWCOR.index = row.names(rw), rw.R.PC1, rw.R.PC2)
+
+wW.CV.PCS <- data.frame(WWCOV.index = row.names(ww), ww.V.PC1, ww.V.PC2)
+wW.CR.PCS <- data.frame(WWCOR.index = row.names(ww), ww.R.PC1, ww.R.PC2)
+
+W.CV.PCS <- data.frame(WCOV.index = row.names(w), w.V.PC1, w.V.PC2)
+W.CR.PCS <- data.frame(WCOR.index = row.names(w), w.R.PC1, w.R.PC2)
+
+W.CV.PCS$color <- Wine$color
+W.CR.PCS$color <- Wine$color
+```
+
+```{r, echo=FALSE}
+ggplot(W.CV.PCS, aes(w.V.PC1, w.V.PC2)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    modelr::geom_ref_line(h = 0) +
+    modelr::geom_ref_line(v = 0) +
+    geom_text(aes(label = WCOV.index, color = color), size = 2) +
+    xlab("Fixed Acidity PC") +
+    ylab("Volatile Acidity PC") +
+    ggtitle("Wine Covariance") +
+    scale_color_discrete(name = "Wine Color")
+
+# W.CV.PCS
+# eigenWCV
+```
+
+```{r, echo=FALSE}
+ggplot(W.CR.PCS, aes(w.R.PC1, w.R.PC2)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    modelr::geom_ref_line(h = 0) +
+    modelr::geom_ref_line(v = 0) +
+    geom_text(aes(label = WCOR.index, color = color), size = 2) +
+    xlab("Fixed Acidity PC") +
+    ylab("Volatile Acidity PC") +
+    ggtitle("Wine Correlation") +
+    scale_color_discrete(name = "Wine Color")
+
+# W.CR.PCS
+# eigenWCR
+```
+
+After representing all the information in the covariance and correlation matrices, we conducted eigen decomposition on the resulting matrices, and have reached our conclusion. We can see that in both cases our data is clustered around the mean of (0, 0). This PCA analysis has helped us see how the two types of acidity appear to have some influence. Particularly fixed acidity has a greater impact on the correlation side while volatile acidity impacts the covariance more. Intuitively this makes sense due to the individual meanings of fixed and volatile. As a reminder, fixed acidity is representative of 4 types of acids and volatile represents the gaseous components of these acids. More graphs related to each wine color demonstrating tight clustering can be found in the appendix section. In those cases we can see more evidently how red wine differs from white wine.
+
+### Question 4:  
+  
+#### Can we model wine color by its physiochemical properties?  
+  
+  
+```{r, echo=FALSE, message=FALSE}
+newWine <- Wine
+
+newWine$color[newWine$color == "Red"] <- 0
+newWine$color[newWine$color == "White"] <- 1
+
+newWine$color <- as.numeric(newWine$color)
+newWine$rating <- as.numeric(newWine$rating)
+
+Data = sort(sample(nrow(newWine), nrow(newWine)*.7))
+trainingData <- newWine[Data,]
+testingData <- newWine[-Data,]
+```
+
+```{r, warning=FALSE, echo=FALSE}
+generalModel <- lm(color ~ fixed.acidity + volatile.acidity + citric.acid + residual.sugar + chlorides + free.sulfur.dioxide + total.sulfur.dioxide + pH + sulphates + alcohol + quality, data = trainingData, family = binomial)
+summary(generalModel)
+```
+
+
+```{r, warning=FALSE}
+decantedModel <- lm(color ~ (free.sulfur.dioxide * total.sulfur.dioxide) + (sulphates * chlorides * alcohol * residual.sugar * fixed.acidity * volatile.acidity) * total.sulfur.dioxide + quality , data = trainingData, family = binomial(link = logit))
+# summary(decantedModel)
+```
+
+For the sake of this paper's length I will not include a summary of the model, but the residual error is .1462 and the R-Squared is .888. For those interested I encourage you to run the code for yourself and un-comment the summary code.
+
+After some further tuning I was able to find a model which was lower than the original base model in regards to its residual error. Although this model still displays a high residual deviance, it is lower than our starting model. Additionally, we were able to see a marginal increase in our R-Squared.  
+
+```{r, echo=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+plot(decantedModel)
+par(mfrow=c(1,1))
+```
+
+Just as we saw earlier in question 2 our residuals are plotted in more or less the same way. The difference this time is that our models fit the data very well, almost scarily well, given the interesting shapes we see. We can see that our Q-Q plot gives us an understanding that the model is not perfectly normally distributed, but each of the tail ends help to balance the model out.
+
+Continuing forward we will determine if we can make accurate predictions regarding the color of the wine given our previous findings.
+
+```{r, echo=FALSE}
+colorPrediction <- round(predict(decantedModel, testingData, type = 'response'))
+table(data = colorPrediction, reference = testingData$color)
+```
+
+Interestingly, there appears to be some data that ends up being classified as a negative number. I am not sure what to make of this, but I've incorporated them into the False Positive count below.
+
+```{r, message=FALSE, echo=FALSE}
+# Temporary solution that will inevitably become permanent
+TP = 472
+FP = 18 + 2 + 1
+FN = 10
+TN = 1440
+```
+
+```{r}
+sprintf("Accuracy Level: %f", (TP + TN) / (FP + FN + TP + TN)) 
+sprintf("Inaccuracy Level: %f", (FP + FN)/(TP + TN))
+```
+
+It can correctly identify the color of the wine 98% of the time, which is far better than the human average of 51%. Often blind wine taste testing results in what is essentially a coin flip, but our model was able to distinguish between the two easily. We can see a strong indication that the color of the wine can be predicted accurately based on physiochemical properties. Additionally, and more importantly, given that this model has surpassed the 95% threshold we would desire for significance, we can state that their are important properties which can indicate what color of wine the data represents. This is intuitive as the the process for making white wine vs red wine is different. As a result the physical traits we would see in our data should also be affected and would inadvertently appear in the model as well.
+
+## Conclusion
+
+After analyzing the data I feel comfortable in concluding that while these properties do play a role in the overall quality of a wine they are only a small part of a bigger picture. Additionally, it is important to consider these findings within the context of the data collection, notably that this data comes from a specific variety of grape. These considerations may not be applicable to the greater wine field as different grape types may yield significantly different properties than the Vinho Verde variety. Despite this, because Portugal is a top ten wine exporter, we can say that it is somewhat relevant in the greater analyzation of wine. We were able to see some distinct traits and trends in the data including our sulfur sweet spot. This small section indicates there is complexity in the system which is not captured by the data set, nor modeled in our attempts such as our PCA. This is only furthered by our inability to classify our rating regression assessments accurately. One proposed method by Paulo Cortez to tackle this shortcoming would be to build a linear regression model that gives a predicted wine quality a higher weight the closer it is to its rated quality. Future research may find success in attempting to increase the modelling dimensions to find clusters of closely related values of wine. Additionally, we may find that more extreme forms of modelling, such as deep learning, may be able to extract complexities in the physiochemical properties that we can not detect.
+
+The approaches used also leave our analysis with a lot to be desired. Specifically when conducting our PCA it was notable that the quantity of outliers we had may have contributed to the poor PCA results. This may be because PCA has a hard time dealing with outliers. Additionally, the models we created and tested for our rating analysis did not produce desirable results. This maybe be because our approach to the problem is fundamentally flawed as quality is very subjective, even by professionals. As I have mentioned earlier, this may in turn be derived from the fact that our data set does not capture the many complexities of wine. 
+
+In conclusion, we were not able to develop a model which achieved any desirable accuracy for real world assessment of wine quality. Even if we successfully developed such a model with high accuracy and high precision we would have built it solely on the vinho verde grape variety which leads me to assume that we may not be able to use the model to predict quality in the greater wine field. This analysis has given me a lot of insight to the world of wines and its many complexities. If I have learned anything, it is that wine is incredibly subject and far more complex than the sum of its parts. Hopefully those  who read this analysis have learned to appreciate wine the way I do now.  
+
+
+## Appendix
+
+### Unused Methods:
+```{r}
+summary(redWine)
+```
+
+```{r}
+summary(whiteWine)
+```
+
+### Unused Graphs:
+
+```{r, echo=FALSE, warning=FALSE}
+ggplot(Wine, aes(x = free.sulfur.dioxide, y = total.sulfur.dioxide) ) +
+   labs(title = "Total to Free Sulfur Density") +
+   theme(plot.title = element_text(hjust = 0.5)) +
+   stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE)  +
+   geom_smooth(data = redWine, method = lm, se = FALSE, aes(col = "red")) +
+   geom_smooth(data = whiteWine, method = lm, se = FALSE, aes(col = "white"))+
+   scale_colour_manual(name = "Avg. Per Wine", values = c("Red", "White"), labels = c("Red Wine", "White Wine"))
+```
+
+```{r, echo=FALSE}
+ggplot(rW.CV.PCS, aes(rw.V.PC1, rw.V.PC2)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    modelr::geom_ref_line(h = 0) +
+    modelr::geom_ref_line(v = 0) +
+    geom_text(aes(label = RWCOV.index), size = 2) +
+    xlab("Fixed Acidity  PC") +
+    ylab("Volatile Acidity PC") +
+    ggtitle("Red Wine Covariance")
+```
+```{r, echo=FALSE}
+ggplot(rW.CR.PCS, aes(rw.R.PC1, rw.R.PC2)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    modelr::geom_ref_line(h = 0) +
+    modelr::geom_ref_line(v = 0) +
+    geom_text(aes(label = RWCOR.index), size = 2) +
+    xlab("Fixed Acidity  PC") +
+    ylab("Volatile Acidity PC") +
+    ggtitle("Red Wine Correlation")
+```
+
+```{r, echo=FALSE}
+ggplot(wW.CV.PCS, aes(ww.V.PC1, ww.V.PC2)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    modelr::geom_ref_line(h = 0) +
+    modelr::geom_ref_line(v = 0) +
+    geom_text(aes(label = WWCOV.index), size = 2) +
+    xlab("Fixed Acidity  PC") +
+    ylab("Volatile Acidity PC") +
+    ggtitle("White Wine Covariance")
+```
+
+```{r, echo=FALSE}
+ggplot(wW.CR.PCS, aes(ww.R.PC1, ww.R.PC2)) +
+    modelr::geom_ref_line(h = 0) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    modelr::geom_ref_line(v = 0) +
+    geom_text(aes(label = WWCOR.index), size = 2) +
+    xlab("Fixed Acidity PC") +
+    ylab("Volatile Acidity PC") +
+    ggtitle("White Wine Correlation")
+```
+
+### Unused Models: 
+```{r, echo=FALSE}
+redWineModel <- lm(quality ~ fixed.acidity + volatile.acidity + citric.acid + residual.sugar + chlorides + free.sulfur.dioxide + total.sulfur.dioxide + pH + sulphates + alcohol, data = redWine) # All variables contributing
+summary(redWineModel)
+```
+
+```{r, echo=FALSE}
+whiteWineModel <- lm(quality ~ fixed.acidity + volatile.acidity + citric.acid + residual.sugar + chlorides + free.sulfur.dioxide + total.sulfur.dioxide + pH + sulphates + alcohol, data = whiteWine) # All variables contributing
+summary(whiteWineModel)
+```
+
+## References
+
+Data Set: https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/
+
+Paper: https://www.sciencedirect.com/science/article/abs/pii/S0167923609001377?via%3Dihub 
+
+P. Cortez, A. Cerdeira, F. Almeida, T. Matos and J. Reis.
+Modeling wine preferences by data mining from physicochemical properties. In Decision Support Systems, Elsevier, 47(4):547-553, 2009.
