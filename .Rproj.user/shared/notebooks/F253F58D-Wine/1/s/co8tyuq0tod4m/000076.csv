@@ -1,1 +1,0 @@
-"0","boxplot(tempWhite, main = ""Adjusted White Wine"", outline=FALSE, names=c(""fixed acidity"",""volatile acidity"","" citric acid"", ""chlorides"", ""pH"", ""sulphates"", ""alcohol"", ""quality""), horizontal=TRUE, las = 2)"

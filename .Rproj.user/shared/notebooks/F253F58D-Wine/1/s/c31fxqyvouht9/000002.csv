@@ -1,8 +1,0 @@
-"0","IsOutlier <- function(data) {"
-"0","   lowerq = quantile(data)[2]"
-"0","   upperq = quantile(data)[4]"
-"0","   iqr = upperq - lowerq "
-"0","   threshold_upper = (iqr * 1.5) + upperq"
-"0","   threshold_lower = lowerq - (iqr * 1.5)"
-"0","   data > threshold_upper | data <  threshold_lower "
-"0","}"

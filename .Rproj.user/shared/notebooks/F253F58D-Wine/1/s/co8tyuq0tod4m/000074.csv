@@ -1,6 +1,0 @@
-"0","tempRed <- redWine %>% select(-total.sulfur.dioxide, -free.sulfur.dioxide, -residual.sugar, -total.free)"
-"0","tempWhite <- whiteWine %>% select(-total.sulfur.dioxide, -free.sulfur.dioxide, -residual.sugar, -total.free)"
-"0",""
-"0","par(mar=c(3,7,2,2))"
-"0",""
-"0","boxplot(tempRed, main = ""Adjusted Red Wine"", outline=FALSE, names=c(""fixed acidity"",""volatile acidity"","" citric acid"", ""chlorides"", ""pH"", ""sulphates"", ""alcohol"", ""quality""), horizontal=TRUE, las = 2)"

@@ -1,2 +1,0 @@
-"0",""
-"0","plot(whiteWine$total.sulfur.dioxide, whiteWine$quality, col = 'Blue', pch = 19, cex = .5, xlab = 'Total Sulfur', ylab = 'Quality', main = 'White Wine Quality to Total Sulfur')"
